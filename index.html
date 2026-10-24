@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuitansi Generator Pro</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Poppins (Locked) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- html2pdf.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- SheetJS (xlsx) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        /* Lock Font to Poppins globally */
+        * {
+            font-family: 'Poppins', sans-serif !important;
+        }
+
+        :root {
+            --print-font-size: 14px;
+            --print-color: #333333;
+            --print-line-thickness: 1px;
+        }
+
+        body {
+            background-color: #f3f4f6;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* A4 Paper Dimensions */
+        .a4-paper {
+            width: 210mm;
+            height: 297mm;
+            background: white;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            margin: 0 auto;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Receipt Halves */
+        .receipt-half {
+            height: 50%;
+            padding: 12mm 15mm;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* Add cutline between the two receipts for visualization */
+        .receipt-half:first-child {
+            border-bottom: 2px dashed #cbd5e1;
+        }
+
+        /* Dynamic Print Styles */
+        .print-area {
+            font-size: var(--print-font-size);
+            color: var(--print-color);
+        }
+
+        .dynamic-line {
+            border-bottom: var(--print-line-thickness) solid var(--print-color);
+        }
+        
+        .dynamic-border {
+            border: var(--print-line-thickness) solid var(--print-color);
+        }
+
+        /* Custom Scrollbar for Sidebar */
+        .sidebar-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .sidebar-scroll::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .a4-paper {
+                box-shadow: none;
+                margin: 0;
+                width: 210mm;
+                height: 297mm;
+            }
+            .receipt-half:first-child {
+                border-bottom: none; /* Hide dashed line on print if desired, or keep as cut guide */
+            }
+        }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <!-- Sidebar Dashboard -->
+    <aside class="w-full md:w-[400px] h-full bg-white shadow-xl flex flex-col z-10 no-print flex-shrink-0">
+        <div class="p-5 border-b bg-indigo-600 text-white flex justify-between items-center">
+            <h1 class="text-xl font-bold">Kuitansi Dashboard</h1>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-5 sidebar-scroll space-y-6">
+            
+            <!-- Settings Section -->
+            <div class="space-y-4">
+                <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Pengaturan Desain</h2>
+                
+                <div>
+                    <label class="block text-sm text-gray-700 mb-1">Upload Logo</label>
+                    <input type="file" id="logoUpload" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-700 mb-1">Ukuran Font (<span id="fontSizeVal">14</span>px)</label>
+                        <input type="range" id="fontSize" min="10" max="24" value="14" class="w-full">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-700 mb-1">Tebal Garis (<span id="lineWidthVal">1</span>px)</label>
+                        <input type="range" id="lineWidth" min="1" max="5" value="1" class="w-full">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-700 mb-1">Warna Teks & Garis</label>
+                    <input type="color" id="textColor" value="#333333" class="w-full h-10 rounded cursor-pointer">
+                </div>
+            </div>
+
+            <hr>
+
+            <!-- Data Section -->
+            <div class="space-y-4">
+                <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Data Kuitansi</h2>
+
+                <div>
+                    <label class="block text-sm text-gray-700 mb-1">Telah Terima Dari</label>
+                    <input type="text" id="inPenerima" value="Dekan Fakultas Farmasi UGM" class="w-full p-2 border rounded focus:ring focus:ring-indigo-200 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-700 mb-1">Guna Membayar</label>
+                    <textarea id="inKeperluan" rows="3" class="w-full p-2 border rounded focus:ring focus:ring-indigo-200 outline-none">Stopmap Saku Program Sarjana Farmasi UGM, Oktober 2026</textarea>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-700 mb-1">Jumlah (Rp)</label>
+                    <input type="text" id="inJumlah" value="10.193.878" class="w-full p-2 border rounded focus:ring focus:ring-indigo-200 outline-none font-bold text-indigo-700" placeholder="Contoh: 1000000" onkeyup="formatCurrencyInput(this)">
+                    <p class="text-xs text-gray-500 mt-1" id="terbilangPreview">Sepuluh Juta Seratus Sembilan Puluh Tiga Ribu Delapan Ratus Tujuh Puluh Delapan Rupiah</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-700 mb-1">Lokasi & Tanggal</label>
+                        <input type="text" id="inTanggal" value="Yogyakarta, 19 Oktober 2026" class="w-full p-2 border rounded focus:ring focus:ring-indigo-200 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-700 mb-1">Nama Perusahaan</label>
+                        <input type="text" id="inPerusahaan" value="CV Gerindo Perkasa" class="w-full p-2 border rounded focus:ring focus:ring-indigo-200 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-700 mb-1">Nama Penandatangan</label>
+                    <input type="text" id="inPenandatangan" value="Arga D. Wicaksana" class="w-full p-2 border rounded focus:ring focus:ring-indigo-200 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-700 mb-1">Info Bank / Tambahan</label>
+                    <input type="text" id="inBank" value="Bank Mandiri: 137-000-9766-276 (a.n.: Rosna Dwi Purwantari)" class="w-full p-2 border rounded focus:ring focus:ring-indigo-200 outline-none">
+                </div>
+            </div>
+
+        </div>
+
+        <div class="p-5 border-t bg-gray-50 space-y-2">
+            <button onclick="exportToPDF()" class="w-full py-2 px-4 bg-red-500 text-white rounded hover:bg-red-600 font-medium flex justify-center items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                Export PDF
+            </button>
+            <button onclick="exportToExcel()" class="w-full py-2 px-4 bg-green-600 text-white rounded hover:bg-green-700 font-medium flex justify-center items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                Export Excel
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Workspace (Preview Area) -->
+    <main class="flex-1 bg-gray-200 overflow-y-auto flex items-start justify-center p-8">
+        
+        <!-- Wrap in a scalable container to ensure it always fits the screen reasonably -->
+        <div id="printContainer" class="transform origin-top">
+            
+            <!-- A4 Paper -->
+            <div id="kuitansiA4" class="a4-paper print-area">
+                
+                <!-- Receipt 1 (Top Half) -->
+                <div class="receipt-half flex flex-col justify-between">
+                    <!-- Header -->
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="h-16 w-64 flex items-center">
+                            <!-- Default Logo Placeholder -->
+                            <img src="" id="logoPreview1" class="max-h-full max-w-full hidden object-contain">
+                            <div id="logoPlaceholder1" class="text-2xl font-bold flex items-center gap-2">
+                                <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                                LOGO
+                            </div>
+                        </div>
+                        <div class="dynamic-border rounded-lg px-8 py-2 text-xl font-bold tracking-widest uppercase">
+                            Kuitansi
+                        </div>
+                    </div>
+
+                    <!-- Body -->
+                    <div class="flex-1 flex flex-col justify-center space-y-4">
+                        <div class="flex">
+                            <div class="w-1/4 font-semibold py-2">Telah Terima Dari</div>
+                            <div class="w-3/4 dynamic-line py-2 font-bold" id="outPenerima1">Dekan Fakultas Farmasi UGM</div>
+                        </div>
+                        
+                        <div class="flex">
+                            <div class="w-1/4 font-semibold py-2">Terbilang</div>
+                            <div class="w-3/4 dynamic-line py-2 italic font-medium leading-relaxed" id="outTerbilang1">
+                                Sepuluh Juta Seratus Sembilan Puluh Tiga Ribu Delapan Ratus Tujuh Puluh Delapan Rupiah
+                            </div>
+                        </div>
+
+                        <div class="flex">
+                            <div class="w-1/4 font-semibold py-2">Guna Membayar</div>
+                            <div class="w-3/4 dynamic-line py-2 whitespace-pre-wrap leading-relaxed" id="outKeperluan1">Stopmap Saku Program Sarjana Farmasi UGM, Oktober 2026</div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="mt-8 flex justify-between items-end">
+                        <div class="flex flex-col gap-4 w-1/2">
+                            <div class="flex items-center gap-4">
+                                <div class="font-semibold">Jumlah</div>
+                                <div class="dynamic-line py-1 px-4 font-bold text-xl min-w-[200px]" id="outJumlah1">Rp 10.193.878</div>
+                            </div>
+                            <div class="text-sm mt-4" id="outBank1">
+                                Bank Mandiri: 137-000-9766-276 (a.n.: Rosna Dwi Purwantari)
+                            </div>
+                        </div>
+
+                        <div class="w-1/3 text-right flex flex-col items-end">
+                            <div class="mb-1" id="outTanggal1">Yogyakarta, 19 Oktober 2026</div>
+                            <div class="mb-16" id="outPerusahaan1">CV Gerindo Perkasa</div>
+                            <div class="font-bold border-b border-transparent hover:border-gray-300 w-full text-right cursor-pointer" id="outPenandatangan1">
+                                Arga D. Wicaksana
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Receipt 2 (Bottom Half - Identical) -->
+                <div class="receipt-half flex flex-col justify-between">
+                    <!-- Header -->
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="h-16 w-64 flex items-center">
+                            <img src="" id="logoPreview2" class="max-h-full max-w-full hidden object-contain">
+                            <div id="logoPlaceholder2" class="text-2xl font-bold flex items-center gap-2">
+                                <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                                LOGO
+                            </div>
+                        </div>
+                        <div class="dynamic-border rounded-lg px-8 py-2 text-xl font-bold tracking-widest uppercase">
+                            Kuitansi
+                        </div>
+                    </div>
+
+                    <!-- Body -->
+                    <div class="flex-1 flex flex-col justify-center space-y-4">
+                        <div class="flex">
+                            <div class="w-1/4 font-semibold py-2">Telah Terima Dari</div>
+                            <div class="w-3/4 dynamic-line py-2 font-bold" id="outPenerima2">Dekan Fakultas Farmasi UGM</div>
+                        </div>
+                        
+                        <div class="flex">
+                            <div class="w-1/4 font-semibold py-2">Terbilang</div>
+                            <div class="w-3/4 dynamic-line py-2 italic font-medium leading-relaxed" id="outTerbilang2">
+                                Sepuluh Juta Seratus Sembilan Puluh Tiga Ribu Delapan Ratus Tujuh Puluh Delapan Rupiah
+                            </div>
+                        </div>
+
+                        <div class="flex">
+                            <div class="w-1/4 font-semibold py-2">Guna Membayar</div>
+                            <div class="w-3/4 dynamic-line py-2 whitespace-pre-wrap leading-relaxed" id="outKeperluan2">Stopmap Saku Program Sarjana Farmasi UGM, Oktober 2026</div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="mt-8 flex justify-between items-end">
+                        <div class="flex flex-col gap-4 w-1/2">
+                            <div class="flex items-center gap-4">
+                                <div class="font-semibold">Jumlah</div>
+                                <div class="dynamic-line py-1 px-4 font-bold text-xl min-w-[200px]" id="outJumlah2">Rp 10.193.878</div>
+                            </div>
+                            <div class="text-sm mt-4" id="outBank2">
+                                Bank Mandiri: 137-000-9766-276 (a.n.: Rosna Dwi Purwantari)
+                            </div>
+                        </div>
+
+                        <div class="w-1/3 text-right flex flex-col items-end">
+                            <div class="mb-1" id="outTanggal2">Yogyakarta, 19 Oktober 2026</div>
+                            <div class="mb-16" id="outPerusahaan2">CV Gerindo Perkasa</div>
+                            <div class="font-bold border-b border-transparent hover:border-gray-300 w-full text-right cursor-pointer" id="outPenandatangan2">
+                                Arga D. Wicaksana
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- Core Formatting Logic ---
+        
+        // Convert numbers to Indonesian words (Terbilang)
+        function terbilang(angka) {
+            angka = Math.abs(parseInt(angka, 10));
+            if (isNaN(angka) || angka === 0) return "Nol";
+            
+            let bilangan = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
+            let teks = "";
+
+            if (angka < 12) {
+                teks = " " + bilangan[angka];
+            } else if (angka < 20) {
+                teks = terbilang(angka - 10) + " Belas";
+            } else if (angka < 100) {
+                teks = terbilang(Math.floor(angka / 10)) + " Puluh" + terbilang(angka % 10);
+            } else if (angka < 200) {
+                teks = " Seratus" + terbilang(angka - 100);
+            } else if (angka < 1000) {
+                teks = terbilang(Math.floor(angka / 100)) + " Ratus" + terbilang(angka % 100);
+            } else if (angka < 2000) {
+                teks = " Seribu" + terbilang(angka - 1000);
+            } else if (angka < 1000000) {
+                teks = terbilang(Math.floor(angka / 1000)) + " Ribu" + terbilang(angka % 1000);
+            } else if (angka < 1000000000) {
+                teks = terbilang(Math.floor(angka / 1000000)) + " Juta" + terbilang(angka % 1000000);
+            } else if (angka < 1000000000000) {
+                teks = terbilang(Math.floor(angka / 1000000000)) + " Milyar" + terbilang(angka % 1000000000);
+            } else if (angka < 1000000000000000) {
+                teks = terbilang(Math.floor(angka / 1000000000000)) + " Trilyun" + terbilang(angka % 1000000000000);
+            }
+            return teks.trim();
+        }
+
+        // Format currency input live
+        function formatCurrencyInput(input) {
+            let val = input.value.replace(/[^0-9]/g, '');
+            if(val !== "") {
+                input.value = new Intl.NumberFormat('id-ID').format(val);
+            }
+            updateData();
+        }
+
+        function getRawNumber(formattedString) {
+            return parseInt(formattedString.replace(/[^0-9]/g, '')) || 0;
+        }
+
+        // Title Case Helper
+        function toTitleCase(str) {
+            return str.replace(/\w\S*/g, function(txt){
+                return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+            });
+        }
+
+
+        // --- UI & Data Binding Logic ---
+        
+        const root = document.documentElement;
+
+        // Settings Listeners
+        document.getElementById('fontSize').addEventListener('input', function(e) {
+            root.style.setProperty('--print-font-size', e.target.value + 'px');
+            document.getElementById('fontSizeVal').innerText = e.target.value;
+        });
+
+        document.getElementById('lineWidth').addEventListener('input', function(e) {
+            root.style.setProperty('--print-line-thickness', e.target.value + 'px');
+            document.getElementById('lineWidthVal').innerText = e.target.value;
+        });
+
+        document.getElementById('textColor').addEventListener('input', function(e) {
+            root.style.setProperty('--print-color', e.target.value);
+        });
+
+        // Logo Upload Logic
+        document.getElementById('logoUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const imgSrc = event.target.result;
+                    // Apply to both receipts
+                    ['1', '2'].forEach(id => {
+                        const imgEl = document.getElementById('logoPreview' + id);
+                        const placeholder = document.getElementById('logoPlaceholder' + id);
+                        imgEl.src = imgSrc;
+                        imgEl.classList.remove('hidden');
+                        placeholder.classList.add('hidden');
+                    });
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Data Sync Logic
+        function syncField(inputId, outIds) {
+            const val = document.getElementById(inputId).value;
+            outIds.forEach(id => document.getElementById(id).innerText = val);
+        }
+
+        function updateData() {
+            // Text Fields
+            syncField('inPenerima', ['outPenerima1', 'outPenerima2']);
+            syncField('inKeperluan', ['outKeperluan1', 'outKeperluan2']);
+            syncField('inTanggal', ['outTanggal1', 'outTanggal2']);
+            syncField('inPerusahaan', ['outPerusahaan1', 'outPerusahaan2']);
+            syncField('inPenandatangan', ['outPenandatangan1', 'outPenandatangan2']);
+            syncField('inBank', ['outBank1', 'outBank2']);
+
+            // Number/Terbilang Logic
+            let rawNum = getRawNumber(document.getElementById('inJumlah').value);
+            let terbilangText = rawNum > 0 ? toTitleCase(terbilang(rawNum)) + " Rupiah" : "";
+            
+            document.getElementById('terbilangPreview').innerText = terbilangText || "Nol Rupiah";
+            
+            // Apply to UI
+            let formattedCur = rawNum > 0 ? "Rp " + new Intl.NumberFormat('id-ID').format(rawNum) : "Rp 0";
+            ['1', '2'].forEach(id => {
+                document.getElementById('outJumlah' + id).innerText = formattedCur;
+                document.getElementById('outTerbilang' + id).innerText = terbilangText;
+            });
+        }
+
+        // Add event listeners to all text inputs for live sync
+        const inputIds = ['inPenerima', 'inKeperluan', 'inTanggal', 'inPerusahaan', 'inPenandatangan', 'inBank'];
+        inputIds.forEach(id => {
+            document.getElementById(id).addEventListener('input', updateData);
+        });
+
+        // Scale preview based on window size to ensure it fits the visual area
+        function resizePreview() {
+            const container = document.getElementById('printContainer');
+            const mainArea = document.querySelector('main');
+            const targetWidth = 794; // approx A4 width in px (210mm)
+            const availableWidth = mainArea.clientWidth - 64; // padding
+            
+            if (availableWidth < targetWidth) {
+                const scale = availableWidth / targetWidth;
+                container.style.transform = `scale(${scale})`;
+            } else {
+                container.style.transform = `scale(1)`;
+            }
+        }
+        window.addEventListener('resize', resizePreview);
+        
+        // Initial setup
+        resizePreview();
+        updateData();
+
+
+        // --- Export Functions ---
+        
+        function exportToPDF() {
+            // Briefly reset transform so PDF renderer gets actual size
+            document.getElementById('printContainer').style.transform = 'scale(1)';
+            
+            const element = document.getElementById('kuitansiA4');
+            const opt = {
+                margin:       0,
+                filename:     'Kuitansi_' + document.getElementById('inPenerima').value.replace(/ /g,"_") + '.pdf',
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).save().then(() => {
+                // Restore scale after rendering
+                resizePreview();
+            });
+        }
+
+        function exportToExcel() {
+            // Gather current data
+            const rawNum = getRawNumber(document.getElementById('inJumlah').value);
+            const data = [
+                ["Field", "Nilai"],
+                ["Telah Terima Dari", document.getElementById('inPenerima').value],
+                ["Terbilang", document.getElementById('terbilangPreview').innerText],
+                ["Guna Membayar", document.getElementById('inKeperluan').value],
+                ["Jumlah", rawNum],
+                ["Tempat & Tanggal", document.getElementById('inTanggal').value],
+                ["Nama Perusahaan", document.getElementById('inPerusahaan').value],
+                ["Nama Penandatangan", document.getElementById('inPenandatangan').value],
+                ["Info Bank", document.getElementById('inBank').value]
+            ];
+
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            
+            // Auto width columns roughly
+            const wscols = [{wch: 25}, {wch: 50}];
+            ws['!cols'] = wscols;
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Kuitansi");
+            
+            const filename = 'Data_Kuitansi_' + document.getElementById('inPenerima').value.replace(/ /g,"_") + '.xlsx';
+            XLSX.writeFile(wb, filename);
+        }
+    </script>
+</body>
+</html>
